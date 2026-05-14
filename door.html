@@ -1,0 +1,517 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+    <title>Opposite Swing 3 Layer Window</title>
+
+    <style>
+        *{
+            margin:0;
+            padding:0;
+            box-sizing:border-box;
+        }
+
+        body{
+            overflow:hidden;
+            background:#000;
+            font-family:Arial, Helvetica, sans-serif;
+        }
+
+        canvas{
+            display:block;
+        }
+
+        #info{
+            position:absolute;
+            top:12px;
+            left:12px;
+            color:white;
+            background:rgba(0,0,0,0.7);
+            padding:12px 16px;
+            border-radius:10px;
+            z-index:10;
+            line-height:1.6;
+        }
+
+        #instructions{
+            position:absolute;
+            bottom:20px;
+            left:50%;
+            transform:translateX(-50%);
+            color:white;
+            background:rgba(0,0,0,0.75);
+            padding:14px 22px;
+            border-radius:10px;
+            text-align:center;
+            z-index:10;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div id="info">
+        Layer 1 → Front Glass Window<br>
+        Layer 2 → Hollow Border<br>
+        Layer 3 → Back Grid Window
+    </div>
+
+    <div id="instructions">
+        Left Side Click → Toggle Front Glass<br>
+        Right Side Click → Toggle Back Grid<br>
+        Drag → Orbit Camera
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r134/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.134.0/examples/js/controls/OrbitControls.js"></script>
+
+    <script>
+
+        // =====================================================
+        // SCENE
+        // =====================================================
+
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x9eb0bb);
+
+        // =====================================================
+        // CAMERA
+        // =====================================================
+
+        const camera = new THREE.PerspectiveCamera(
+            35,
+            window.innerWidth / window.innerHeight,
+            0.1,
+            1000
+        );
+
+        camera.position.set(4, 3, 8);
+
+        // =====================================================
+        // RENDERER
+        // =====================================================
+
+        const renderer = new THREE.WebGLRenderer({
+            antialias:true
+        });
+
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(window.devicePixelRatio);
+
+        renderer.outputEncoding = THREE.sRGBEncoding;
+        renderer.physicallyCorrectLights = true;
+
+        renderer.shadowMap.enabled = true;
+        renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+
+        document.body.appendChild(renderer.domElement);
+
+        // =====================================================
+        // LIGHTS
+        // =====================================================
+
+        const ambient = new THREE.AmbientLight(
+            0xffffff,
+            0.8
+        );
+
+        scene.add(ambient);
+
+        const dirLight = new THREE.DirectionalLight(
+            0xffffff,
+            1.4
+        );
+
+        dirLight.position.set(8,10,8);
+
+        dirLight.castShadow = true;
+
+        dirLight.shadow.mapSize.width = 2048;
+        dirLight.shadow.mapSize.height = 2048;
+
+        scene.add(dirLight);
+
+        // =====================================================
+        // FLOOR
+        // =====================================================
+
+        const floor = new THREE.Mesh(
+            new THREE.PlaneGeometry(40,40),
+            new THREE.MeshStandardMaterial({
+                color:0xd7ccb2,
+                roughness:0.95
+            })
+        );
+
+        floor.rotation.x = -Math.PI / 2;
+        floor.receiveShadow = true;
+
+        scene.add(floor);
+
+        const gridHelper = new THREE.GridHelper(
+            40,
+            40,
+            0x888888,
+            0x888888
+        );
+
+        gridHelper.position.y = 0.01;
+
+        scene.add(gridHelper);
+
+        // =====================================================
+        // WINDOW GROUP
+        // =====================================================
+
+        const windowGroup = new THREE.Group();
+
+        windowGroup.position.set(0, 1.6, 0);
+
+        scene.add(windowGroup);
+
+        // =====================================================
+        // DIMENSIONS
+        // =====================================================
+
+        const width = 1.5;
+        const height = 3;
+
+        // =====================================================
+        // MATERIALS
+        // =====================================================
+
+        const frameMat = new THREE.MeshStandardMaterial({
+            color:0xeeeeee,
+            metalness:0.65,
+            roughness:0.35
+        });
+
+        // =====================================================
+        // FRAME FUNCTION
+        // =====================================================
+
+        function createFrame(w, h, thickness, depth){
+
+            const group = new THREE.Group();
+
+            const t = thickness;
+
+            // TOP
+            const top = new THREE.Mesh(
+                new THREE.BoxGeometry(w, t, depth),
+                frameMat
+            );
+
+            top.position.y = h / 2;
+            top.castShadow = true;
+
+            group.add(top);
+
+            // BOTTOM
+            const bottom = new THREE.Mesh(
+                new THREE.BoxGeometry(w, t, depth),
+                frameMat
+            );
+
+            bottom.position.y = -h / 2;
+            bottom.castShadow = true;
+
+            group.add(bottom);
+
+            // LEFT
+            const left = new THREE.Mesh(
+                new THREE.BoxGeometry(t, h, depth),
+                frameMat
+            );
+
+            left.position.x = -w / 2;
+            left.castShadow = true;
+
+            group.add(left);
+
+            // RIGHT
+            const right = new THREE.Mesh(
+                new THREE.BoxGeometry(t, h, depth),
+                frameMat
+            );
+
+            right.position.x = w / 2;
+            right.castShadow = true;
+
+            group.add(right);
+
+            return group;
+        }
+
+        // =====================================================
+        // GRID FUNCTION
+        // =====================================================
+
+function createSquareGrid(w, h, rows = 12, cols = 7){
+
+    const group = new THREE.Group();
+
+    const cellW = w / cols;
+    const cellH = h / rows;
+
+    const lineMat = new THREE.LineBasicMaterial({
+        color:0x222222
+    });
+
+    for(let y = 0; y < rows; y++){
+
+        for(let x = 0; x < cols; x++){
+
+            const startX = -w/2 + x * cellW;
+            const startY = h/2 - y * cellH;
+
+            const points = [
+                new THREE.Vector3(startX, startY, 0),
+
+                new THREE.Vector3(startX + cellW * 0.75, startY, 0),
+
+                new THREE.Vector3(
+                    startX + cellW * 0.75,
+                    startY - cellH * 0.75,
+                    0
+                ),
+
+                new THREE.Vector3(
+                    startX,
+                    startY - cellH * 0.75,
+                    0
+                ),
+
+                new THREE.Vector3(startX, startY, 0)
+            ];
+
+            const geometry = new THREE.BufferGeometry().setFromPoints(points);
+
+            const square = new THREE.Line(geometry, lineMat);
+
+            group.add(square);
+        }
+    }
+
+    return group;
+}
+        // =====================================================
+        // FRONT GLASS PANEL
+        // =====================================================
+
+        const frontPivot = new THREE.Group();
+
+        // LEFT HINGE
+        frontPivot.position.x = -width / 2;
+
+        const frontPanel = new THREE.Group();
+
+        frontPanel.position.x = width / 2;
+
+        const frontFrame = createFrame(
+            width,
+            height,
+            0.09,
+            0.06
+        );
+
+        frontFrame.position.z = 0.08;
+
+        frontPanel.add(frontFrame);
+
+        // GLASS
+
+        const glassMat = new THREE.MeshPhysicalMaterial({
+            color:0xaaddff,
+            transparent:true,
+            transmission:1,
+            opacity:0.55,
+            roughness:0.05,
+            thickness:0.05,
+            ior:1.4,
+            side:THREE.DoubleSide
+        });
+
+        const glass = new THREE.Mesh(
+            new THREE.PlaneGeometry(
+                width - 0.18,
+                height - 0.28
+            ),
+            glassMat
+        );
+
+        glass.position.z = 0.04;
+
+        frontPanel.add(glass);
+
+        frontPivot.add(frontPanel);
+
+        // =====================================================
+        // MIDDLE HOLLOW FRAME
+        // =====================================================
+
+        const middleGroup = new THREE.Group();
+
+        const middleFrame = createFrame(
+            width - 0.12,
+            height - 0.12,
+            0.05,
+            0.025
+        );
+
+        // keep exactly between both layers
+        middleFrame.position.z = 0;
+
+        middleGroup.add(middleFrame);
+        // =====================================================
+        // BACK GRID PANEL
+        // =====================================================
+
+        const backPivot = new THREE.Group();
+
+        // SAME HINGE SIDE
+        backPivot.position.x = -width / 2;
+
+        const backPanel = new THREE.Group();
+
+        backPanel.position.x = width / 2;
+
+        // FLIP PANEL DEPTH
+        backPanel.scale.z = -1;
+
+        const backFrame = createFrame(
+            width,
+            height,
+            0.09,
+            0.06
+        );
+
+        backFrame.position.z = -0.08;
+
+        backPanel.add(backFrame);
+
+        const grid = createSquareGrid(
+            width - 0.18,
+            height - 0.28
+        );
+
+        grid.position.z = -0.02;
+
+        backPanel.add(grid);
+
+        backPivot.add(backPanel);
+
+        // =====================================================
+        // ADD TO SCENE
+        // =====================================================
+
+        windowGroup.add(
+            frontPivot,
+            middleGroup,
+            backPivot
+        );
+
+        // =====================================================
+        // CONTROLS
+        // =====================================================
+
+        const controls = new THREE.OrbitControls(
+            camera,
+            renderer.domElement
+        );
+
+        controls.enableDamping = true;
+        controls.dampingFactor = 0.08;
+
+        controls.target.set(0, 1.6, 0);
+
+        // =====================================================
+        // ROTATION VALUES
+        // =====================================================
+
+        let frontTarget = 0;
+        let backTarget = 0;
+
+        let frontRotation = 0;
+        let backRotation = 0;
+
+        // =====================================================
+        // CLICK EVENTS
+        // =====================================================
+
+        window.addEventListener("click", (e)=>{
+
+            // LEFT SIDE
+            if(e.clientX < window.innerWidth / 2){
+
+                frontTarget =
+                    frontTarget === 0
+                    ? THREE.MathUtils.degToRad(60)
+                    : 0;
+            }
+
+            // RIGHT SIDE
+            else{
+
+                backTarget =
+                    backTarget === 0
+                    ? THREE.MathUtils.degToRad(60)
+                    : 0;
+            }
+
+        });
+
+        // =====================================================
+        // RESIZE
+        // =====================================================
+
+        window.addEventListener("resize", ()=>{
+
+            camera.aspect =
+                window.innerWidth / window.innerHeight;
+
+            camera.updateProjectionMatrix();
+
+            renderer.setSize(
+                window.innerWidth,
+                window.innerHeight
+            );
+
+        });
+
+        // =====================================================
+        // ANIMATION
+        // =====================================================
+
+        function animate(){
+
+            requestAnimationFrame(animate);
+
+            frontRotation = THREE.MathUtils.lerp(
+                frontRotation,
+                frontTarget,
+                0.08
+            );
+
+            backRotation = THREE.MathUtils.lerp(
+                backRotation,
+                backTarget,
+                0.08
+            );
+
+            // SAME ROTATION DIRECTION
+            frontPivot.rotation.y = frontRotation;
+            backPivot.rotation.y = -backRotation;
+
+            controls.update();
+
+            renderer.render(scene, camera);
+        }
+
+        animate();
+
+    </script>
+
+</body>
+</html>
